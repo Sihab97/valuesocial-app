@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  username     String   @unique
+  email        String   @unique
+  passwordHash String?
+  bio          String?  @db.VarChar(300)
+  image        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  posts    Post[]
+  likes    Like[]
+  comments Comment[]
+
+  // Follow relationships
+  following Follow[] @relation("Following")
+  followers Follow[] @relation("Followers")
+
+  // Notification relationships
+  notificationsReceived Notification[] @relation("NotificationRecipient")
+  notificationsSent     Notification[] @relation("NotificationActor")
+
+  // Messaging relationships
+  conversationsAsMemberOne Conversation[] @relation("ConversationMemberOne")
+  conversationsAsMemberTwo Conversation[] @relation("ConversationMemberTwo")
+  sentMessages             Message[]
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  content   String   @db.VarChar(2000)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  authorId String
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  likes    Like[]
+  comments Comment[]
+
+  // Post notifications
+  notifications Notification[]
+
+  @@index([authorId, createdAt])
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  postId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String   @db.VarChar(1000)
+  createdAt DateTime @default(now())
+
+  userId String
+  postId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+}
+
+// Follow / Unfollow relationship
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+}
+
+// Notifications System
+model Notification {
+  id        String   @id @default(cuid())
+  type      String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  recipientId String
+  actorId     String
+  postId      String?
+
+  recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor     User  @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Cascade)
+  post      Post? @relation(fields: [postId], references: [id], onDelete: SetNull)
+
+  @@index([recipientId, isRead, createdAt])
+  @@index([actorId])
+  @@index([postId])
+}
+
+// Private Conversations
+model Conversation {
+  id          String   @id @default(cuid())
+  memberOneId String
+  memberTwoId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberOne User @relation("ConversationMemberOne", fields: [memberOneId], references: [id], onDelete: Cascade)
+  memberTwo User @relation("ConversationMemberTwo", fields: [memberTwoId], references: [id], onDelete: Cascade)
+
+  messages Message[]
+
+  @@unique([memberOneId, memberTwoId])
+  @@index([memberOneId, updatedAt])
+  @@index([memberTwoId, updatedAt])
+}
+
+// Private Messages
+model Message {
+  id        String    @id @default(cuid())
+  content   String    @db.VarChar(2000)
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  conversationId String
+  senderId       String
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
